@@ -4,6 +4,9 @@ mod player;
 mod caster;
 mod intersect;
 
+use rodio::{Decoder, OutputStream, source::Source};
+use std::fs::File;
+use std::io::BufReader;
 use image::RgbaImage;
 use intersect::cast_ray3d;
 use minifb::{ Window, WindowOptions, Key };
@@ -34,6 +37,67 @@ fn load_texture(path: &str) -> RgbaImage {
     let img = image::open(path).expect("No se pudo cargar la textura");
     img.to_rgba8()
 }
+
+fn load_floor_texture(path: &str) -> RgbaImage {
+    let img = image::open(path).expect("No se pudo cargar la textura");
+    img.to_rgba8()
+}
+
+fn apply_texture(framebuffer: &mut Framebuffer, texture: &RgbaImage) {
+    let texture_width = texture.width() as f32;
+    let texture_height = texture.height() as f32;
+    let framebuffer_width = framebuffer.width as f32;
+    let framebuffer_height = framebuffer.height as f32;
+
+    for x in 0..framebuffer_width as usize {
+        for y in 0..framebuffer_height as usize {
+            let tex_x = (x as f32 / framebuffer_width * texture_width) as u32;
+            let tex_y = (y as f32 / framebuffer_height * texture_height) as u32;
+            let pixel = texture.get_pixel(tex_x, tex_y);
+
+            let color = ((pixel[0] as u32) << 16) | ((pixel[1] as u32) << 8) | (pixel[2] as u32);
+            framebuffer.set_current_color(color);
+            framebuffer.point(x, y);
+        }
+    }
+}
+
+fn render_minimap(framebuffer: &mut Framebuffer, player: &Player, xo: usize, yo: usize, minimap_size: usize) {
+    let maze = load_maze("./maze.txt");
+    let block_size = minimap_size / maze.len(); // Ajusta el tamaño del bloque al tamaño del minimapa
+
+    // Dibuja el fondo del minimapa en negro
+    framebuffer.set_current_color(0x000000); // Color negro
+    for x in xo..xo + minimap_size {
+        for y in yo..yo + minimap_size {
+            framebuffer.point(x, y);
+        }
+    }
+
+    // Dibuja el laberinto en el minimapa
+    framebuffer.set_current_color(0xFFFFFF); // Color blanco para las paredes del laberinto
+    for row in 0..maze.len() {
+        for col in 0..maze[row].len() {
+            let cell_x = xo + col * block_size;
+            let cell_y = yo + row * block_size;
+            draw_cell(framebuffer, cell_x, cell_y, block_size, maze[row][col]);
+        }
+    }
+
+    // Dibuja al jugador más grande en el minimapa
+    framebuffer.set_current_color(0xFF0000); // Color rojo para el jugador
+    let player_x = xo + (player.pos.x as usize * minimap_size / framebuffer.width);
+    let player_y = yo + (player.pos.y as usize * minimap_size / framebuffer.height);
+    let player_size = (5.0 * minimap_size as f32 / framebuffer.width as f32) as usize; // Tamaño del jugador en el minimapa
+
+    // Dibuja un rectángulo para representar al jugador
+    for x in player_x..player_x + player_size {
+        for y in player_y..player_y + player_size {
+            framebuffer.point(x, y);
+        }
+    }
+}
+
 
 fn render(framebuffer: &mut Framebuffer, player: &Player) {
     let maze = load_maze("./maze.txt");
@@ -97,6 +161,20 @@ fn render3d(framebuffer: &mut Framebuffer, player: &mut Player, texture: &RgbaIm
 }
 
 
+fn play_music(file_path: &str) {
+    // Crea un nuevo stream de salida
+    let (_stream, stream_handle) = OutputStream::try_default().unwrap();
+
+    // Abre el archivo de audio
+    let file = File::open(file_path).unwrap();
+    let source = Decoder::new(BufReader::new(file)).unwrap();
+
+    // Reproduce la música
+    stream_handle.play_raw(source.convert_samples()).unwrap();
+
+    // Mantén el programa corriendo mientras se reproduce la música
+    std::thread::sleep(std::time::Duration::from_secs(5)); // Ajusta la duración según tu necesidad
+}
 
 fn main() {
     let window_width = 1300;
@@ -104,8 +182,8 @@ fn main() {
     let framebuffer_width = 1300;
     let framebuffer_height = 900;
     let frame_delay = Duration::from_millis(16);
-    let mut mode = 0;
     let texture = load_texture("src/test.png");
+    let floor = load_texture("src/floor.png");
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
 
@@ -125,27 +203,24 @@ fn main() {
         a: PI / 3.0,
         fov: PI / 3.0
     };
-
+    
     let mut last_time = Instant::now();
     let mut fps = 0.0;
-
+    
     while window.is_open() && !window.is_key_down(Key::Escape) {
+        // play_music("src/Dialga's Fight to the Finish - 8bit.mp3");
 
         framebuffer.clear();
+
+        apply_texture(&mut framebuffer, &floor);
 
         let get_maze = load_maze("./maze.txt");
 
         process_events(&window, &mut player, &get_maze, block_size);
-
-        if window.is_key_down(Key::M) {
-            mode += 1;
-        }
         
-        if mode % 2 == 0 {
-            render3d(&mut framebuffer, &mut player, &texture);
-        } else {
-            render(&mut framebuffer, &mut player);
-        }
+        render3d(&mut framebuffer, &mut player, &texture);
+
+        render_minimap(&mut framebuffer, &player, 10, 10, 200);
 
         // Calcula los FPS
         let current_time = Instant::now();
