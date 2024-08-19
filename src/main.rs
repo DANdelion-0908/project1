@@ -3,8 +3,10 @@ mod maze;
 mod player;
 mod caster;
 mod intersect;
+mod welcome_screen;
 
-use gilrs::{Gilrs, Button, Event};
+// use crate::welcome_screen::show_welcome_screen;
+use gilrs::Gilrs;
 use rodio::{Decoder, OutputStream, source::Source};
 use std::fs::File;
 use std::io::BufReader;
@@ -18,28 +20,22 @@ use std::time::{ Duration, Instant };
 use crate::framebuffer::Framebuffer;
 use crate::maze::load_maze;
 use crate::player::Player;
-use crate::caster::cast_ray;
 
-fn draw_cell(framebuffer: &mut Framebuffer, xo: usize, yo: usize, block_size: usize, cell: char) {
+fn draw_cell(framebuffer: &mut Framebuffer, xo: usize, yo: usize, block_width: usize, block_heigth: usize, cell: char) {
     if cell == ' ' {
         return;
     }
 
     framebuffer.set_current_color(0xFFFFFF);
 
-    for x in xo..xo + block_size {
-        for y in yo..yo + block_size {
+    for x in xo..xo + block_width {
+        for y in yo..yo + block_heigth {
             framebuffer.point(x, y);
         }
     }
 }
 
 fn load_texture(path: &str) -> RgbaImage {
-    let img = image::open(path).expect("No se pudo cargar la textura");
-    img.to_rgba8()
-}
-
-fn load_floor_texture(path: &str) -> RgbaImage {
     let img = image::open(path).expect("No se pudo cargar la textura");
     img.to_rgba8()
 }
@@ -63,67 +59,30 @@ fn apply_texture(framebuffer: &mut Framebuffer, texture: &RgbaImage) {
     }
 }
 
-fn render_minimap(framebuffer: &mut Framebuffer, player: &Player, xo: usize, yo: usize, minimap_size: usize) {
+fn render(framebuffer: &mut Framebuffer, player: &Player, minimap_xo: usize, minimap_yo: usize, minimap_size: usize) {
     let maze = load_maze("./maze.txt");
-    let block_size = minimap_size / maze.len(); // Ajusta el tamaño del bloque al tamaño del minimapa
-
-    // Dibuja el fondo del minimapa en negro
-    framebuffer.set_current_color(0x000000); // Color negro
-    for x in xo..xo + minimap_size {
-        for y in yo..yo + minimap_size {
-            framebuffer.point(x, y);
-        }
-    }
+    let maze_width = maze[0].len();
+    let maze_height = maze.len();
+    let block_width = minimap_size / maze_width;
+    let block_height = minimap_size / maze_height;
 
     // Dibuja el laberinto en el minimapa
-    framebuffer.set_current_color(0xFFFFFF); // Color blanco para las paredes del laberinto
     for row in 0..maze.len() {
         for col in 0..maze[row].len() {
-            let cell_x = xo + col * block_size;
-            let cell_y = yo + row * block_size;
-            draw_cell(framebuffer, cell_x, cell_y, block_size, maze[row][col]);
+            let cell_x = minimap_xo + col * block_width;
+            let cell_y = minimap_yo + row * block_height;
+            draw_cell(framebuffer, cell_x, cell_y, block_width, block_height, maze[row][col]);
         }
     }
 
-    // Dibuja al jugador más grande en el minimapa
-    framebuffer.set_current_color(0xFF0000); // Color rojo para el jugador
-    let player_x = xo + (player.pos.x as usize * minimap_size / framebuffer.width);
-    let player_y = yo + (player.pos.y as usize * minimap_size / framebuffer.height);
-    let player_size = (5.0 * minimap_size as f32 / framebuffer.width as f32) as usize; // Tamaño del jugador en el minimapa
-
-    // Dibuja un rectángulo para representar al jugador
-    for x in player_x..player_x + player_size {
-        for y in player_y..player_y + player_size {
-            framebuffer.point(x, y);
-        }
-    }
+    // Dibuja al jugador en el minimapa
+    framebuffer.set_current_color(0xFF0000);
+    let player_x = minimap_xo + (player.pos.x as usize * minimap_size / framebuffer.width);
+    let player_y = minimap_yo + (player.pos.y as usize * minimap_size / framebuffer.height);
+    
+    framebuffer.point(player_x, player_y);
 }
 
-
-fn render(framebuffer: &mut Framebuffer, player: &Player) {
-    let maze = load_maze("./maze.txt");
-    let block_size = 100;
-
-    // draws maze
-    for row in 0..maze.len() {
-        for col in 0..maze[row].len() {
-            draw_cell(framebuffer, col * block_size, row * block_size, block_size, maze[row][col])
-        }
-    }
-
-    // draw player
-    framebuffer.set_current_color(0xFFFFFF);
-    framebuffer.point(player.pos.x as usize, player.pos.y as usize);
-
-    // cast ray
-    let num_rays = 5;
-    for i in 0..num_rays {
-        let current_ray = i as f32 / num_rays as f32;
-        let a = player.a - (player.fov / 2.0) + (player.fov * current_ray);
-
-        cast_ray(framebuffer, &maze, &player, a, block_size);
-    }
-}
 
 fn render3d(framebuffer: &mut Framebuffer, player: &mut Player, texture: &RgbaImage) {
     let maze = load_maze("./maze.txt");
@@ -177,7 +136,37 @@ fn play_music(file_path: &str) {
     std::thread::sleep(std::time::Duration::from_secs(5)); // Ajusta la duración según tu necesidad
 }
 
+pub fn show_welcome_screen() {
+    let window_width = 1300;
+    let window_height = 900;
+    let framebuffer_width = window_width; // Ajustado para que coincida con la ventana
+    let framebuffer_height = window_height; // Ajustado para que coincida con la ventana
+
+    let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
+    let welcome = load_texture("src/welcome.png");
+
+    apply_texture(&mut framebuffer, &welcome);
+
+    let mut window = Window::new(
+        "Welcome Screen",
+        window_width,
+        window_height,
+        WindowOptions::default(),
+    ).unwrap();
+
+    while window.is_open() {
+        // Actualiza la ventana con el contenido del framebuffer
+        window.update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height).unwrap();
+        
+        // Salir si se presiona cualquier tecla
+        if window.get_keys_pressed(minifb::KeyRepeat::No).len() > 0 {
+            break;
+        }
+    }
+}
+
 fn main() {
+    // play_music("src/Dialga's Fight to the Finish - 8bit.mp3");
     let window_width = 1300;
     let window_height = 900;
     let framebuffer_width = 1300;
@@ -185,10 +174,12 @@ fn main() {
     let frame_delay = Duration::from_millis(16);
     let texture = load_texture("src/test.png");
     let floor = load_texture("src/floor.png");
-
+    
     let mut gilrs = Gilrs::new().unwrap();
-
+    
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
+    
+    show_welcome_screen();
 
     let block_size = 100;
 
@@ -217,8 +208,6 @@ fn main() {
     }
     
     while window.is_open() && !window.is_key_down(Key::Escape) {
-        // play_music("src/Dialga's Fight to the Finish - 8bit.mp3");
-
         
         framebuffer.clear();
         
@@ -230,7 +219,7 @@ fn main() {
         
         render3d(&mut framebuffer, &mut player, &texture);
 
-        render_minimap(&mut framebuffer, &player, 10, 10, 200);
+        render(&mut framebuffer, &player, 10, 10, 200);
 
         // Calcula los FPS
         let current_time = Instant::now();

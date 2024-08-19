@@ -1,5 +1,5 @@
 use gilrs::{Gilrs, Button, Event};
-use minifb::{Window, Key};
+use minifb::Window;
 use nalgebra_glm::Vec2;
 use std::f32::consts::PI;
 
