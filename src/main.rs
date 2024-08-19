@@ -4,6 +4,7 @@ mod player;
 mod caster;
 mod intersect;
 
+use gilrs::{Gilrs, Button, Event};
 use rodio::{Decoder, OutputStream, source::Source};
 use std::fs::File;
 use std::io::BufReader;
@@ -185,6 +186,8 @@ fn main() {
     let texture = load_texture("src/test.png");
     let floor = load_texture("src/floor.png");
 
+    let mut gilrs = Gilrs::new().unwrap();
+
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
 
     let block_size = 100;
@@ -206,17 +209,24 @@ fn main() {
     
     let mut last_time = Instant::now();
     let mut fps = 0.0;
+
+    let mut last_mouse_x = 0.0;
+
+    if let Some(mouse_pos) = window.get_mouse_pos(minifb::MouseMode::Pass) {
+        last_mouse_x = mouse_pos.0;
+    }
     
     while window.is_open() && !window.is_key_down(Key::Escape) {
         // play_music("src/Dialga's Fight to the Finish - 8bit.mp3");
 
+        
         framebuffer.clear();
-
+        
         apply_texture(&mut framebuffer, &floor);
-
+        
         let get_maze = load_maze("./maze.txt");
 
-        process_events(&window, &mut player, &get_maze, block_size);
+        process_events(&window, &mut player, &get_maze, block_size, &mut gilrs, &mut last_mouse_x);
         
         render3d(&mut framebuffer, &mut player, &texture);
 
