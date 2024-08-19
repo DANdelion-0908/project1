@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io::BufReader;
 use image::RgbaImage;
 use intersect::cast_ray3d;
-use minifb::{ Window, WindowOptions, Key };
+use minifb::{ Window, WindowOptions, Key, MouseMode };
 use nalgebra_glm::Vec2;
 use player::process_events;
 use std::f32::consts::PI;
@@ -199,7 +199,9 @@ fn main() {
         "Maze Runner",
         window_width,
         window_height,
-        WindowOptions::default(),
+        WindowOptions {
+            ..WindowOptions::default()
+        },
     ).unwrap();
 
     framebuffer.set_background_color(0x000000);
@@ -249,9 +251,7 @@ fn main() {
 
         std::thread::sleep(frame_delay);
     }
-    
+
     *stop_signal.lock().unwrap() = true;
     music_thread.join().unwrap();
 }
-
-
