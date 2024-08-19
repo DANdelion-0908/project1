@@ -3,9 +3,11 @@ mod maze;
 mod player;
 mod caster;
 mod intersect;
-mod welcome_screen;
 
-// use crate::welcome_screen::show_welcome_screen;
+use std::thread;
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::sync::Mutex;
 use gilrs::Gilrs;
 use rodio::{Decoder, OutputStream, source::Source};
 use std::fs::File;
@@ -121,7 +123,7 @@ fn render3d(framebuffer: &mut Framebuffer, player: &mut Player, texture: &RgbaIm
 }
 
 
-fn play_music(file_path: &str) {
+fn play_music(file_path: &str, stop_signal: Arc<Mutex<bool>>) {
     // Crea un nuevo stream de salida
     let (_stream, stream_handle) = OutputStream::try_default().unwrap();
 
@@ -133,7 +135,9 @@ fn play_music(file_path: &str) {
     stream_handle.play_raw(source.convert_samples()).unwrap();
 
     // Mantén el programa corriendo mientras se reproduce la música
-    std::thread::sleep(std::time::Duration::from_secs(5)); // Ajusta la duración según tu necesidad
+    while !*stop_signal.lock().unwrap() {
+        thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 pub fn show_welcome_screen() {
@@ -166,7 +170,15 @@ pub fn show_welcome_screen() {
 }
 
 fn main() {
-    // play_music("src/Dialga's Fight to the Finish - 8bit.mp3");
+    // Créditos por la canción: https://youtu.be/nfiJXQEtQwM?si=rYaduMdxSpShJU6h
+    let file_path = "src/taylor's_version.mp3";
+    let stop_signal = Arc::new(Mutex::new(false));
+    let stop_signal_clone = Arc::clone(&stop_signal);
+
+    let music_thread = thread::spawn(move || {
+        play_music(file_path, stop_signal_clone);
+    });
+
     let window_width = 1300;
     let window_height = 900;
     let framebuffer_width = 1300;
@@ -237,6 +249,9 @@ fn main() {
 
         std::thread::sleep(frame_delay);
     }
+    
+    *stop_signal.lock().unwrap() = true;
+    music_thread.join().unwrap();
 }
 
 
